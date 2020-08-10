@@ -1,62 +1,54 @@
-use crate::proto::common::{AnyValue, ArrayValue, KeyValue};
-use opentelemetry::api::{LabelSet, Value};
+use crate::proto::opentelemetry::proto::common::v1::any_value::Value;
+use crate::proto::opentelemetry::proto::common::v1::{
+    AnyValue, ArrayValue, KeyValue, KeyValueList,
+};
+use opentelemetry::api::LabelSet;
 use opentelemetry::sdk::EvictedHashMap;
-use protobuf::RepeatedField;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-pub(crate) struct Attributes(pub(crate) ::protobuf::RepeatedField<crate::proto::common::KeyValue>);
-
-impl From<EvictedHashMap> for Attributes {
-    fn from(attributes: EvictedHashMap) -> Self {
-        Attributes(RepeatedField::from_vec(
-            attributes
+impl From<EvictedHashMap> for KeyValueList {
+    fn from(ehm: EvictedHashMap) -> Self {
+        KeyValueList {
+            values: ehm
                 .into_iter()
-                .map(|(key, value)| {
-                    let mut kv: KeyValue = KeyValue::new();
-                    kv.set_key(key.as_str().to_string());
-                    kv.set_value(value.into());
-                    kv
+                .map(|(key, value)| KeyValue {
+                    key: key.as_str().to_string(),
+                    value: Some(AnyValue::from(value)),
                 })
                 .collect(),
-        ))
+        }
     }
 }
 
-impl From<Vec<opentelemetry::api::KeyValue>> for Attributes {
+impl From<Vec<opentelemetry::api::KeyValue>> for KeyValueList {
     fn from(kvs: Vec<opentelemetry::api::KeyValue>) -> Self {
-        Attributes(RepeatedField::from_vec(
-            kvs.into_iter()
-                .map(|api_kv| {
-                    let mut kv: KeyValue = KeyValue::new();
-                    kv.set_key(api_kv.key.as_str().to_string());
-                    kv.set_value(api_kv.value.into());
-                    kv
+        KeyValueList {
+            values: kvs
+                .into_iter()
+                .map(|api_kv| KeyValue {
+                    key: api_kv.key.as_str().to_string(),
+                    value: Some(AnyValue::from(api_kv.value)),
                 })
                 .collect(),
-        ))
+        }
     }
 }
 
-impl From<Value> for AnyValue {
-    fn from(value: Value) -> Self {
-        let mut any_value = AnyValue::new();
-        match value {
-            Value::Bool(val) => any_value.set_bool_value(val),
-            Value::I64(val) => any_value.set_int_value(val),
-            Value::U64(val) => any_value.set_int_value(val as i64),
-            Value::F64(val) => any_value.set_double_value(val),
-            Value::String(val) => any_value.set_string_value(val),
-            Value::Bytes(_val) => any_value.set_string_value("INVALID".to_string()),
-            Value::Array(vals) => any_value.set_array_value({
-                let mut array_value = ArrayValue::new();
-                array_value.set_values(RepeatedField::from_vec(
-                    vals.into_iter().map(AnyValue::from).collect(),
-                ));
-                array_value
-            }),
-        };
-
-        any_value
+impl From<opentelemetry::api::Value> for AnyValue {
+    fn from(value: opentelemetry::api::Value) -> Self {
+        AnyValue {
+            value: match value {
+                opentelemetry::api::Value::Bool(val) => Some(Value::BoolValue(val)),
+                opentelemetry::api::Value::I64(val) => Some(Value::IntValue(val)),
+                opentelemetry::api::Value::U64(val) => Some(Value::IntValue(val as i64)),
+                opentelemetry::api::Value::F64(val) => Some(Value::DoubleValue(val)),
+                opentelemetry::api::Value::String(val) => Some(Value::StringValue(val)),
+                opentelemetry::api::Value::Bytes(_val) => None,
+                opentelemetry::api::Value::Array(vals) => Some(Value::ArrayValue(ArrayValue {
+                    values: vals.into_iter().map(Into::into).collect(),
+                })),
+            },
+        }
     }
 }
 

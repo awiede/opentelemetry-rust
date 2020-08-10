@@ -1,54 +1,53 @@
-use crate::proto::resource::Resource;
-use crate::proto::trace::{
-    InstrumentationLibrarySpans, ResourceSpans, Span, Span_Event, Span_Link, Span_SpanKind, Status,
-    Status_StatusCode,
+use crate::proto::opentelemetry::proto::common::v1::KeyValueList;
+use crate::proto::opentelemetry::proto::resource::v1::Resource;
+use crate::proto::opentelemetry::proto::trace::v1::span::{Event, Link, SpanKind};
+use crate::proto::opentelemetry::proto::trace::v1::status::StatusCode;
+use crate::proto::opentelemetry::proto::trace::v1::{
+    InstrumentationLibrarySpans, ResourceSpans, Span, Status,
 };
-use crate::transform::common::{to_nanos, Attributes};
-use opentelemetry::api::{Link, SpanKind, StatusCode};
+use crate::transform::common::to_nanos;
 use opentelemetry::exporter::trace::SpanData;
-use protobuf::reflect::ProtobufValue;
-use protobuf::{RepeatedField, SingularPtrField};
 use std::sync::Arc;
 
-impl From<SpanKind> for Span_SpanKind {
-    fn from(span_kind: SpanKind) -> Self {
+impl From<opentelemetry::api::SpanKind> for SpanKind {
+    fn from(span_kind: opentelemetry::api::SpanKind) -> Self {
         match span_kind {
-            SpanKind::Client => Span_SpanKind::CLIENT,
-            SpanKind::Consumer => Span_SpanKind::CONSUMER,
-            SpanKind::Internal => Span_SpanKind::INTERNAL,
-            SpanKind::Producer => Span_SpanKind::PRODUCER,
-            SpanKind::Server => Span_SpanKind::SERVER,
+            opentelemetry::api::SpanKind::Client => SpanKind::Client,
+            opentelemetry::api::SpanKind::Consumer => SpanKind::Consumer,
+            opentelemetry::api::SpanKind::Internal => SpanKind::Internal,
+            opentelemetry::api::SpanKind::Producer => SpanKind::Producer,
+            opentelemetry::api::SpanKind::Server => SpanKind::Server,
         }
     }
 }
 
-impl From<StatusCode> for Status_StatusCode {
-    fn from(status_code: StatusCode) -> Self {
+impl From<opentelemetry::api::StatusCode> for StatusCode {
+    fn from(status_code: opentelemetry::api::StatusCode) -> Self {
         match status_code {
-            StatusCode::OK => Status_StatusCode::Ok,
-            StatusCode::Canceled => Status_StatusCode::Cancelled,
-            StatusCode::Unknown => Status_StatusCode::UnknownError,
-            StatusCode::InvalidArgument => Status_StatusCode::InvalidArgument,
-            StatusCode::DeadlineExceeded => Status_StatusCode::DeadlineExceeded,
-            StatusCode::NotFound => Status_StatusCode::NotFound,
-            StatusCode::AlreadyExists => Status_StatusCode::AlreadyExists,
-            StatusCode::PermissionDenied => Status_StatusCode::PermissionDenied,
-            StatusCode::ResourceExhausted => Status_StatusCode::ResourceExhausted,
-            StatusCode::FailedPrecondition => Status_StatusCode::FailedPrecondition,
-            StatusCode::Aborted => Status_StatusCode::Aborted,
-            StatusCode::OutOfRange => Status_StatusCode::OutOfRange,
-            StatusCode::Unimplemented => Status_StatusCode::Unimplemented,
-            StatusCode::Internal => Status_StatusCode::InternalError,
-            StatusCode::Unavailable => Status_StatusCode::Unavailable,
-            StatusCode::DataLoss => Status_StatusCode::DataLoss,
-            StatusCode::Unauthenticated => Status_StatusCode::Unauthenticated,
+            opentelemetry::api::StatusCode::OK => StatusCode::Ok,
+            opentelemetry::api::StatusCode::Canceled => StatusCode::Cancelled,
+            opentelemetry::api::StatusCode::Unknown => StatusCode::UnknownError,
+            opentelemetry::api::StatusCode::InvalidArgument => StatusCode::InvalidArgument,
+            opentelemetry::api::StatusCode::DeadlineExceeded => StatusCode::DeadlineExceeded,
+            opentelemetry::api::StatusCode::NotFound => StatusCode::NotFound,
+            opentelemetry::api::StatusCode::AlreadyExists => StatusCode::AlreadyExists,
+            opentelemetry::api::StatusCode::PermissionDenied => StatusCode::PermissionDenied,
+            opentelemetry::api::StatusCode::ResourceExhausted => StatusCode::ResourceExhausted,
+            opentelemetry::api::StatusCode::FailedPrecondition => StatusCode::FailedPrecondition,
+            opentelemetry::api::StatusCode::Aborted => StatusCode::Aborted,
+            opentelemetry::api::StatusCode::OutOfRange => StatusCode::OutOfRange,
+            opentelemetry::api::StatusCode::Unimplemented => StatusCode::Unimplemented,
+            opentelemetry::api::StatusCode::Internal => StatusCode::InternalError,
+            opentelemetry::api::StatusCode::Unavailable => StatusCode::Unavailable,
+            opentelemetry::api::StatusCode::DataLoss => StatusCode::DataLoss,
+            opentelemetry::api::StatusCode::Unauthenticated => StatusCode::Unauthenticated,
         }
     }
 }
 
-impl From<Link> for Span_Link {
-    fn from(link: Link) -> Self {
-        Span_Link {
+impl From<opentelemetry::api::Link> for Link {
+    fn from(link: opentelemetry::api::Link) -> Self {
+        Link {
             trace_id: link
                 .span_context()
                 .trace_id()
@@ -63,7 +62,7 @@ impl From<Link> for Span_Link {
                 .to_vec(),
             // TODO Add TraceState to SpanContext API: https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/trace/api.md#spancontext
             trace_state: "".to_string(),
-            attributes: Attributes::from(link.attributes().clone()).0,
+            attributes: KeyValueList::from(link.attributes().clone()).values,
             dropped_attributes_count: 0,
             ..Default::default()
         }
@@ -73,77 +72,65 @@ impl From<Link> for Span_Link {
 impl From<Arc<SpanData>> for ResourceSpans {
     fn from(source_span: Arc<SpanData>) -> Self {
         ResourceSpans {
-            resource: SingularPtrField::from(Some(Resource {
+            resource: Some(Resource {
                 attributes: Default::default(),
                 dropped_attributes_count: 0,
-                ..Default::default()
-            })),
-            instrumentation_library_spans: RepeatedField::from_vec(vec![
-                InstrumentationLibrarySpans {
-                    instrumentation_library: Default::default(),
-                    spans: RepeatedField::from_vec(vec![Span {
-                        trace_id: source_span
-                            .span_context
-                            .trace_id()
-                            .to_u128()
-                            .to_be_bytes()
-                            .to_vec(),
-                        span_id: source_span
-                            .span_context
-                            .span_id()
-                            .to_u64()
-                            .to_be_bytes()
-                            .to_vec(),
-                        // TODO Add TraceState to SpanContext API: https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/trace/api.md#spancontext
-                        trace_state: "".to_string(),
-                        parent_span_id: {
-                            if source_span.parent_span_id.to_u64().is_non_zero() {
-                                source_span.parent_span_id.to_u64().to_be_bytes().to_vec()
-                            } else {
-                                vec![]
-                            }
-                        },
-                        name: source_span.name.clone(),
-                        kind: source_span.span_kind.clone().into(),
-                        start_time_unix_nano: to_nanos(source_span.start_time),
-                        end_time_unix_nano: to_nanos(source_span.end_time),
-                        attributes: Attributes::from(source_span.attributes.clone()).0,
-                        dropped_attributes_count: source_span.attributes.dropped_count(),
-                        events: RepeatedField::from_vec(
-                            source_span
-                                .message_events
-                                .clone()
-                                .into_iter()
-                                .map(|event| Span_Event {
-                                    time_unix_nano: to_nanos(event.timestamp),
-                                    name: event.name,
-                                    attributes: Attributes::from(event.attributes).0,
-                                    dropped_attributes_count: 0,
-                                    ..Default::default()
-                                })
-                                .collect(),
-                        ),
-                        dropped_events_count: 0,
-                        links: RepeatedField::from_vec(
-                            source_span
-                                .links
-                                .clone()
-                                .into_iter()
-                                .map(Into::into)
-                                .collect(),
-                        ),
-                        dropped_links_count: 0,
-                        status: SingularPtrField::some(Status {
-                            code: Status_StatusCode::from(source_span.status_code.clone()),
-                            message: source_span.status_message.clone(),
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    }]),
-                    ..Default::default()
-                },
-            ]),
-            ..Default::default()
+            }),
+            instrumentation_library_spans: vec![InstrumentationLibrarySpans {
+                instrumentation_library: Default::default(),
+                spans: vec![Span {
+                    trace_id: source_span
+                        .span_context
+                        .trace_id()
+                        .to_u128()
+                        .to_be_bytes()
+                        .to_vec(),
+                    span_id: source_span
+                        .span_context
+                        .span_id()
+                        .to_u64()
+                        .to_be_bytes()
+                        .to_vec(),
+                    // TODO Add TraceState to SpanContext API: https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/trace/api.md#spancontext
+                    trace_state: "".to_string(),
+                    parent_span_id: {
+                        if source_span.parent_span_id.to_u64() > 0 {
+                            source_span.parent_span_id.to_u64().to_be_bytes().to_vec()
+                        } else {
+                            vec![]
+                        }
+                    },
+                    name: source_span.name.clone(),
+                    kind: source_span.span_kind.clone() as i32,
+                    start_time_unix_nano: to_nanos(source_span.start_time),
+                    end_time_unix_nano: to_nanos(source_span.end_time),
+                    attributes: KeyValueList::from(source_span.attributes.clone()).values,
+                    dropped_attributes_count: source_span.attributes.dropped_count(),
+                    events: source_span
+                        .message_events
+                        .clone()
+                        .into_iter()
+                        .map(|event| Event {
+                            time_unix_nano: to_nanos(event.timestamp),
+                            name: event.name,
+                            attributes: KeyValueList::from(event.attributes).values,
+                            dropped_attributes_count: 0,
+                        })
+                        .collect(),
+                    dropped_events_count: 0,
+                    links: source_span
+                        .links
+                        .clone()
+                        .into_iter()
+                        .map(Into::into)
+                        .collect(),
+                    dropped_links_count: 0,
+                    status: Some(Status {
+                        code: StatusCode::from(source_span.status_code.clone()) as i32,
+                        message: source_span.status_message.clone(),
+                    }),
+                }],
+            }],
         }
     }
 }
